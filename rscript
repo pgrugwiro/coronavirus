@@ -1,0 +1,93 @@
+library(rvest)
+library(tidyverse)
+library(lubridate)
+library(purrr)
+options(scipen = 999)
+library(gganimate)
+library(glue)
+
+
+list_countries <- c("china", "italy", "iran", "south-korea", "spain", "germany", "france", "us", "uk")
+
+days_since <- 50
+
+
+base_url <- "https://www.worldometers.info/coronavirus/country"
+
+get_data <- function(page){
+  
+  url <- glue("https://www.worldometers.info/coronavirus/country/{page}")
+  xml_doc <- read_html(url)
+  nodes <- xml_doc %>% html_nodes("script")
+  
+  total_cases <- nodes[24] %>% html_text()
+  
+  days <- gsub(".*categories:*(.*?) *yAxis.*", "\\1", total_cases) %>% 
+    gsub("\\[|\\]|}", "", .) %>% 
+    gsub('\"', "", ., fixed = TRUE) %>% str_trim()
+  
+  days <- days %>% str_split_fixed(",", n= days_since) %>% as.vector() %>% as.Date(., "%b%d")
+  
+  numbers <- sub(".*data:*(.*?) *responsive.*", "\\1", total_cases) %>% 
+    gsub("\\[|\\]|}", "", .) %>% str_replace("null", "0") %>%
+    str_trim()
+  numbers <- numbers %>% str_split_fixed(",", n= days_since)  %>% as.vector() %>% as.numeric()
+  
+  data.frame(day = days, number = numbers)
+  
+}
+
+
+b <- lapply(list_countries, get_data)
+china <- b[[1]] %>% mutate(Country = rep("China", days_since))
+italy <- b[[2]] %>% mutate(Country = rep("Italy", days_since))
+iran <- b[[3]] %>% mutate(Country = rep("Iran", days_since))
+skorea <- b[[4]] %>% mutate(Country = rep("South Korea", days_since))
+spain <- b[[5]] %>% mutate(Country = rep("Spain", days_since))
+germany <- b[[6]] %>% mutate(Country = rep("Germany", days_since))
+france <- b[[7]] %>% mutate(Country = rep("France", days_since))
+us <- b[[8]] %>% mutate(Country = rep("USA", days_since))
+uk <- b[[9]] %>% mutate(Country = rep("UK", days_since))
+
+
+overall_data <- rbind(china, italy, iran, skorea, spain, germany, france, us, uk)
+
+overall_data %>% 
+  ggplot(aes(day, number, col = Country)) + 
+  geom_line() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  scale_y_log10()
+
+
+data <- overall_data %>% 
+  group_by(day) %>% 
+  filter(Country != "China") %>%
+  arrange(-number) %>% 
+  mutate(rank = row_number())
+
+
+p <- data  %>%
+  group_by(day) %>%
+  mutate(Rank = rank(-number),
+         Value_rel = number/number[Rank==1],
+         Value_lbl = paste0(" ", number))  %>%
+  ggplot(aes(-Rank,Value_rel, fill = Country)) +
+  geom_col(width = 0.9, position = "identity") +
+  coord_flip(clip = "off", expand = FALSE) +
+  scale_y_continuous(labels = scales::comma) +
+  scale_x_continuous(limits = c(-9,0)) +
+  geom_text(aes(-Rank,y=0,label = paste(Country,"")),hjust=1, vjust =0.2) +
+  geom_text(aes(-Rank,y=Value_rel,label = Value_lbl, hjust=0)) + 
+  theme_minimal() +
+  theme(legend.position = "none",axis.title = element_blank()) +
+  labs(title='Date: {closest_state}', x = "", y = "",
+       caption = "Data from https://www.worldometers.info/coronavirus \n
+       Plot by philgR") +
+  theme(plot.title = element_text(hjust = 0, size = 18),
+        axis.ticks.y = element_blank(), 
+        axis.text.y  = element_blank(),
+        plot.margin = margin(2,2,2,4, "cm")) +
+  transition_states(day,4,1) 
+
+animate(p, 100, fps = 25, duration = 20, width = 800, height = 600)
+
