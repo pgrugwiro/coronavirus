@@ -1,3 +1,4 @@
+#load the necessary packages
 library(rvest)
 library(tidyverse)
 library(lubridate)
@@ -6,13 +7,17 @@ options(scipen = 999)
 library(gganimate)
 library(glue)
 
-
+#list of countries for which daily data is available
 list_countries <- c("china", "italy", "iran", "south-korea", "spain", "germany", "france", "us", "uk")
 
+#days to track
 days_since <- 50
 
-
+#data source
 base_url <- "https://www.worldometers.info/coronavirus/country"
+
+
+#web scraping function to get the data from the source, process data, and save in 'day' and 'number' variables
 
 get_data <- function(page){
   
@@ -37,6 +42,7 @@ get_data <- function(page){
   
 }
 
+#build the scraped data into a tidy dataframe
 
 b <- lapply(list_countries, get_data)
 china <- b[[1]] %>% mutate(Country = rep("China", days_since))
@@ -52,6 +58,8 @@ uk <- b[[9]] %>% mutate(Country = rep("UK", days_since))
 
 overall_data <- rbind(china, italy, iran, skorea, spain, germany, france, us, uk)
 
+
+#line plot of cumulative numbers
 overall_data %>% 
   ggplot(aes(day, number, col = Country)) + 
   geom_line() +
@@ -59,6 +67,7 @@ overall_data %>%
   scale_y_log10()
 
 
+#remove China from the data for a more proportional graph
 data <- overall_data %>% 
   group_by(day) %>% 
   filter(Country != "China") %>%
@@ -66,6 +75,7 @@ data <- overall_data %>%
   mutate(rank = row_number())
 
 
+#create an animated bar graph showing change in numbers as days go by
 p <- data  %>%
   group_by(day) %>%
   mutate(Rank = rank(-number),
