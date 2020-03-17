@@ -1,0 +1,70 @@
+#creates a graphic of the total cases shown on the world map. 
+
+library("ggplot2")
+library("sf")
+theme_set(theme_bw())
+library("rnaturalearth")
+library(rnaturalearthdata)
+library(ggspatial)
+library(tmap)
+library(tmaptools)
+library(tidyverse)
+library(rvest)
+library(gganimate)
+
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+#ggplot(data = world) +
+  geom_sf(color = "black", fill = "lightblue", alpha = 0.25) +
+  xlab("Longitude") + 
+  ylab("Latitude") +
+  ggtitle("World map", subtitle = paste0("(", length(unique(world$name)), "countries)"))+
+  annotation_scale(location = "bl", width_hint = 0.2) +
+  annotation_north_arrow(location = "bl", which_north = "true", 
+                         pad_x = unit(0.75, "in"), pad_y = unit(0.2, "in"),
+                         style = north_arrow_fancy_orienteering) +
+  coord_sf(xlim = c(-180, 180), ylim = c(-65, 90))
+
+
+url <- "https://www.worldometers.info/coronavirus/#countries"
+
+h <- read_html(url)
+
+tab <- h %>% html_nodes("table")
+
+tab <- tab %>% html_table
+
+corona <- tab[[1]]
+
+names(corona)[names(corona) == "Country,Other"] <- "name"
+
+corona$TotalCases <- parse_number(corona$TotalCases)
+corona$TotalDeaths <- parse_number(corona$TotalDeaths)
+
+corona$name <- str_replace_all(corona$name, "USA", "United States")
+corona$name <- str_replace_all(corona$name, "UK", "United Kingdom")
+corona$name <- str_replace_all(corona$name, "S. Korea", "Korea")
+corona$name <- str_replace_all(corona$name, "Vatican City", "Vatican")
+
+world_points<- st_centroid(world)
+world_points <- cbind(world, st_coordinates(st_centroid(world$geometry)))
+
+isi_2 <- world_points %>% select(name, X, Y, geometry)
+corona_world_2 <- left_join(isi_2, corona)
+
+
+
+ggplot(corona_world_2) +
+  geom_sf(color = "black", fill = "lightblue", alpha = 0.25) +
+  geom_point(aes(X,Y, size = TotalCases), color = "black")
+  
+
+
+tm_shape(corona_world_2) +
+  tm_polygons(col = "lightblue", alpha = 0.1) +
+  tm_symbols(size = "TotalCases", shape = 21,  col = "darkred", legend.size.is.portrait = T) +
+  tm_layout(title = "COVID-19 Spread", title.position = c(0.5,0.2))
+
+
+tmap_mode("view")
+tmap_last()
